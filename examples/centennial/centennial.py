@@ -38,26 +38,22 @@ geometry = Geometry(mesh,thklim,bed=interp,thickness=1e-3)
 model = Model(geometry,scales,constants,model_config,solver_config)
 model.traction = 5.0
 
-z_ela = 2.45
-lapse_rate = 5/1000
-time_step_factor = 1.05
-model.specific_balance = ((geometry.surface - z_ela)*lapse_rate)
+def smb(surface,ela=2.45,lapse_rate=5./1000.):
+    return (surface - ela)*lapse_rate
+
+model.specific_balance = smb(geometry.surface)
 
 S_file = fd.File(f'{results_dir}/S.pvd')
 B_file = fd.File(f'{results_dir}/B.pvd')
 Us_file = fd.File(f'{results_dir}/U_s.pvd')
 H_file = fd.File(f'{results_dir}/H.pvd')
-N_file = fd.File(f'{results_dir}/N.pvd')
 adot_file = fd.File(f'{results_dir}/adot.pvd')
 
-Q_cg2 = fd.VectorFunctionSpace(mesh,"CG",3)
 S_out = fd.Function(model.Q_thk,name='S')
-N_out = fd.Function(model.Q_thk,name='N')
-U_s = fd.Function(Q_cg2,name='U_s')
+U_s = fd.Function(model.Q_bar,name='U_s')
 
 S_out.interpolate(model.S)
-N_out.interpolate(model.N)
-U_s.interpolate(model.Ubar0 - 1./4*model.Udef0)
+U_s.project(model.Ubar0 - 1./4*model.Udef0)
 
 S_file.write(S_out,time=0.)
 H_file.write(model.H0,time=0.)
@@ -68,6 +64,7 @@ adot_file.write(model.adot,time=0.)
 t = 0.0
 t_end = 2000
 dt = 2.5
+time_step_factor = 1.05
 max_step = 2.5
 
 with fd.CheckpointFile(f"{results_dir}/functions.h5", 'w') as afile:
@@ -80,8 +77,7 @@ with fd.CheckpointFile(f"{results_dir}/functions.h5", 'w') as afile:
 
         z_ela = 2.45 + max(0,(t-700)/3000)
 
-        model.adot.dat.data[:] = (((model.B.dat.data[:] + model.H0.dat.data[:])
-                                  - z_ela)*lapse_rate)
+        model.specific_balance = smb(geometry.surface,ela=z_ela)
 
         converged = model.step(t,
                                dt,
@@ -94,20 +90,19 @@ with fd.CheckpointFile(f"{results_dir}/functions.h5", 'w') as afile:
             dt*=0.5
             continue
         t += dt
-        PETSc.Sys.Print(t,dt,fd.assemble(model.H0*fd.dx))
+        PETSc.Sys.Print(t,dt)
+
         S_out.interpolate(model.S)
-        N_out.interpolate(model.N)
-        U_s.interpolate((model.Ubar0 - 1./4*model.Udef0)*(model.H0>model.thklim))
+        U_s.project((model.Ubar0 - 1./4*model.Udef0))
 
         afile.save_function(model.H0, idx=i)
         afile.save_function(S_out, idx=i)
-        afile.save_function(N_out, idx=i)
         afile.save_function(U_s, idx=i)
 
         S_file.write(S_out,time=t)
         H_file.write(model.H0,time=t)
         B_file.write(model.B,time=t)
         Us_file.write(U_s,time=t)
-        N_file.write(N_out,time=t)
         adot_file.write(model.adot,time=t)
+
         i += 1

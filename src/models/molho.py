@@ -510,7 +510,7 @@ class Model:
     def specific_balance(self):
         return self.adot.dat.data[:]
 
-    @specific_balance.setterSea to Summit Ether Lite XT
+    @specific_balance.setter
     def specific_balance(self,a_in):
         if type(a_in) == float:
             self.adot.dat.data[:] = a_in
